@@ -29,18 +29,15 @@ def setup_torch(device, dtype, seed=42):
     return ctx
 
 
-def load_model_checkpoint(
-    checkpoint_fp: str | Path, cxr_embedding_fp: str | Path = None, **kwargs
-) -> tuple[GPT2LMNoBiasModel | EncoderDecoderModel, dict]:
+def load_model_checkpoint(checkpoint_fp: str | Path, **kwargs) -> tuple[
+    GPT2LMNoBiasModel | EncoderDecoderModel, dict]:
     """Load model from a checkpoint file, **kwargs are passed to `torch.load`."""
     checkpoint = th.load(checkpoint_fp, weights_only=False, **kwargs)
 
     if checkpoint["model_config"].is_encoder_decoder:
         model = EncoderDecoderModel(checkpoint["model_config"])
-        if cxr_embedding_fp is not None:
-            raise ValueError("Multimodal embeddings are not supported for encoder-decoder models.")
     else:
-        model = GPT2LMNoBiasModel(checkpoint["model_config"], cxr_embeddings_fp=cxr_embedding_fp)
+        model = GPT2LMNoBiasModel(checkpoint["model_config"])
 
     model.load_state_dict(checkpoint["model"])
 
