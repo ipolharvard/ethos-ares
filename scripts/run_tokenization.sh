@@ -10,7 +10,7 @@ if [[ -n "$suffix" && ! "$suffix" =~ ^[-_] ]]; then
     suffix="-$suffix"
 fi
 
-input_dir="data/mimic-meds${suffix//_/-}/data"
+input_dir="data/mimic-2.2-meds${suffix//_/-}/data"
 output_dir="data/tokenized_datasets/mimic${suffix//-/_}"
 
 singularity_preamble="
