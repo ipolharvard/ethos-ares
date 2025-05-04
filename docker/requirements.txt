@@ -20,7 +20,7 @@ jsonschema-specifications==2024.10.1
 loguru==0.7.3
 markupsafe==3.0.2
 meds==0.3.3
-meds-transforms==0.1
+meds-transforms==0.1.1
 mpmath==1.3.0
 nested-ragged-tensors==0.1
 networkx==3.4.2
@@ -63,7 +63,6 @@ tokenizers==0.21.0
 torch==2.6.0
 tqdm==4.67.1
 transformers==4.48.2
-triton==3.2.0
 typing-extensions==4.12.2
 urllib3==2.3.0
 wandb==0.19.6
