@@ -11,7 +11,7 @@ from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from scipy.stats import norm
 from sklearn.calibration import calibration_curve
-from sklearn.metrics import roc_auc_score, roc_curve
+from sklearn.metrics import precision_recall_curve, roc_auc_score, roc_curve
 
 from .inference.constants import Reason
 
@@ -193,6 +193,8 @@ def compute_fitted_metrics(
     nlr = (1 - sensitivity) / specificity
     f1 = tp / (tp + (fp + fn) / 2)
 
+    precision_points, recall_points, _ = precision_recall_curve(y_true, y_pred)
+
     return {
         "auc": auc,
         "auprc": auprc,
@@ -205,6 +207,8 @@ def compute_fitted_metrics(
         "nlr": nlr,
         "f1": f1,
         "recall": tpr,
+        "precision_points": precision_points,
+        "recall_points": recall_points,
         "precision_values": precision_values,
         "recall_values": recall_values,
         "tpr_points": tpr_points,
