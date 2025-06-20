@@ -37,10 +37,6 @@ class TimelineDataset(th.utils.data.Dataset):
         if is_encoder_decoder:
             self.timeline_size = n_positions
 
-        self.cxr_tokens = th.tensor(
-            self.vocab.encode([stoken for stoken in self.vocab if stoken.startswith("CXR//")])
-        )
-
     @property
     def tokens(self):
         return self._data.tokens
@@ -58,7 +54,7 @@ class TimelineDataset(th.utils.data.Dataset):
         return self._data.patient_id_at_idx
 
     @property
-    def patient_offsets(self) -> list[th.Tensor]:
+    def patient_offsets(self) -> th.Tensor:
         return th.cat([shard["patient_offsets"] + shard["offset"] for shard in self._data.shards])
 
     @property
@@ -86,12 +82,6 @@ class TimelineDataset(th.utils.data.Dataset):
             raise AttributeError("It's not MIMIC, no 'icustay_id' available.")
         return self._data.icu_stay_id
 
-    @property
-    def dicom_id(self):
-        if not self.is_mimic:
-            raise AttributeError("It's not MIMIC with CXR extension, no 'dicom_id' available.")
-        return self._data.dicom_id
-
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(len={len(self):,}, "
@@ -109,31 +99,7 @@ class TimelineDataset(th.utils.data.Dataset):
         if self.is_encoder_decoder:
             return (pt_ctx, timeline[:-1]), timeline[1:]
 
-        cxr_ids = None
-        if self.cxr_tokens.numel() and th.any(cxr_token_mask := th.isin(timeline, self.cxr_tokens)):
-            cxr_token_indices = th.nonzero(cxr_token_mask).view(-1)
-            cxr_ids = th.tensor(
-                [
-                    self.dicom_id[idx + cxr_idx]
-                    for i, cxr_idx in enumerate(cxr_token_indices, 1)
-                    if cxr_idx < len(timeline) - i
-                ]
-            ).to(int)
-
-            new_timeline, ptr, inserted_cxr_indices = [], 0, []
-            for i, (cxr_idx, cxr_id) in enumerate(zip(cxr_token_indices, cxr_ids)):
-                new_timeline.append(timeline[ptr : cxr_idx + 2].clone())
-                new_timeline[-1][-1] = cxr_id
-                ptr = cxr_idx + 1
-                inserted_cxr_indices.append(ptr.item() + i)
-            new_timeline.append(timeline[ptr : len(timeline) - len(cxr_ids)])
-            timeline = th.cat(new_timeline)
-
         x = th.cat((pt_ctx, timeline[:-1]))
-
-        if cxr_ids is not None and cxr_ids.numel():
-            timeline[inserted_cxr_indices] = -100
-
         y = th.cat((pt_ctx, timeline[1:]))
         y[: self.context_size] = -100
         return x, y
@@ -207,7 +173,7 @@ class TimelineDataset(th.utils.data.Dataset):
         }
 
         # TODO: This is extremely memory-inefficient.
-        for mimic_col in ["hadm_id", "icustay_id", "dicom_id"]:
+        for mimic_col in ["hadm_id", "icustay_id"]:
             if mimic_col in df.columns:
                 tensors[mimic_col] = df[mimic_col].to_torch()
 
@@ -224,9 +190,6 @@ class InferenceDataset(TimelineDataset, abc.ABC):
 
     def _get_icu_stay_id(self, idx: int) -> int | None:
         return None if th.isnan(icu_stay_id := self.icu_stay_id[idx]) else int(icu_stay_id)
-
-    def _get_dicom_id(self, idx: int) -> str | None:
-        return None if th.isnan(dicom_id := self.dicom_id[idx]) else dicom_id
 
     @abc.abstractmethod
     def __len__(self) -> int:
