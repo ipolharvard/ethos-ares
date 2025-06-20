@@ -205,12 +205,15 @@ class MeasurementData:
     @staticmethod
     @MatchAndRevise(prefix=["TEMPERATURE", "HEART_RATE", "RESPIRATORY_RATE", "O2_SATURATION"])
     def process_simple_measurements(df: pl.DataFrame) -> pl.DataFrame:
-        # temperature can be missing, account for it
-        return df.with_columns(
-            code=pl.concat_list(
-                pl.lit("VITAL//") + pl.col("code"), pl.lit("VITAL//Q//") + pl.col("code")
+        return (
+            df.filter(pl.col("numeric_value").is_not_null())
+            .with_columns(
+                code=pl.concat_list(
+                    pl.lit("VITAL//") + pl.col("code"), pl.lit("VITAL//Q//") + pl.col("code")
+                )
             )
-        ).explode("code")
+            .explode("code")
+        )
 
     @staticmethod
     @MatchAndRevise(prefix="PAIN")
@@ -558,7 +561,7 @@ class LabData:
     def make_quantiles(
         df: pl.DataFrame, counts: dict[str, int] | None = None, vocab: list[str] | None = None
     ) -> pl.DataFrame:
-        # TODO: Mark outlier values, use for that some utilities from MEDS_transforms.
+        # TODO: we run some simple analysis and decided to keep 200 most frequent labs
         known_lab_names = list(counts.keys())[:200] if vocab is None else vocab
         return (
             df.filter(unify_code_names(pl.col("code")).is_in(known_lab_names))
@@ -611,8 +614,12 @@ class EdData:
     @staticmethod
     @MatchAndRevise(prefix="ACUITY")
     def process_ed_acuity(df: pl.DataFrame) -> pl.DataFrame:
-        # TODO: This shouldn't be quantiles, but rather categories
-        # TODO: it also can be missing
-        return df.with_columns(
-            code=pl.concat_list(pl.lit("ED_ACUITY"), pl.lit("ED_ACUITY//Q"))
-        ).explode("code")
+        return (
+            df.filter(pl.col("numeric_value").is_not_null())
+            .with_columns(
+                code=pl.concat_list(
+                    "code", pl.lit("Q") + pl.col("numeric_value").cast(pl.UInt8).cast(pl.Utf8)
+                )
+            )
+            .explode("code")
+        )
