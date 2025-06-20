@@ -143,33 +143,20 @@ class TimelineDataset(th.utils.data.Dataset):
         time_at_start = self.times[idx].item()
 
         static_tokens = []
-        if patient_id not in self.static_data:
-            # TODO: Don't hardcode this.
-            static_tokens.extend(
-                [
-                    "BMI//UNKNOWN",
-                    "GENDER//M",
-                    "MARITAL//UNKNOWN",
-                    f"Q{int(self._num_quantiles / 2)}",
-                    "Q1",
-                    "RACE//UNKNOWN",
-                ]
-            )
-        else:
-            for token in self.static_data[patient_id].values():
-                if token["code"][0] == ST.DOB:
-                    age = timedelta(microseconds=time_at_start - token["time"][0])
-                    static_tokens.extend(self._age_to_tokens(age.days / 365.25))
-                elif len(token["code"]) == 1:
-                    static_tokens.append(token["code"][0])
-                else:
-                    idx = self._find_idx_of_last_smaller_or_equal(token["time"], time_at_start)
-                    code = (
-                        token["code"][0].split("//")[0] + "//UNKNOWN"
-                        if idx == -1
-                        else token["code"][idx]
-                    )
-                    static_tokens.append(code)
+        for token in self.static_data[patient_id].values():
+            if token["code"][0] == ST.DOB:
+                age = timedelta(microseconds=time_at_start - token["time"][0])
+                static_tokens.extend(self._age_to_tokens(age.days / 365.25))
+            elif len(token["code"]) == 1:
+                static_tokens.append(token["code"][0])
+            else:
+                time_idx = self._find_idx_of_last_smaller_or_equal(token["time"], time_at_start)
+                code = (
+                    token["code"][0].split("//")[0] + "//UNKNOWN"
+                    if time_idx == -1
+                    else token["code"][time_idx]
+                )
+                static_tokens.append(code)
         return th.tensor(self.vocab.encode(static_tokens))
 
     def _age_to_tokens(self, age_years: float) -> tuple[str, str]:
@@ -190,7 +177,7 @@ class TimelineDataset(th.utils.data.Dataset):
         indices = [i for i, v in enumerate(ll) if v <= value]
         if indices:
             return indices[-1]
-        raise -1
+        return -1
 
     @staticmethod
     def tensorize(in_fp: str | Path | list, out_fp: str | Path, vocab: Vocabulary):
