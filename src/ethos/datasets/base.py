@@ -7,6 +7,7 @@ from pathlib import Path
 import polars as pl
 import torch as th
 from safetensors.torch import save_file
+from torch.utils.data import Subset
 
 from ..constants import STATIC_DATA_FN
 from ..constants import SpecialToken as ST
@@ -178,6 +179,26 @@ class TimelineDataset(th.utils.data.Dataset):
                 tensors[mimic_col] = df[mimic_col].to_torch()
 
         save_file(tensors, Path(out_fp).with_suffix(".safetensors"))
+
+    def train_test_split(
+        self, test_size: float | int
+    ) -> tuple[Subset["TimelineDataset"], Subset["TimelineDataset"]]:
+        """Splits the dataset into training and testing subsets."""
+        if 0 < test_size < 1:
+            real_test_size = int(test_size * len(self))
+        elif test_size >= 1:
+            real_test_size = int(test_size * 1e6)
+        else:
+            raise ValueError(
+                f"test_size must be a float in (0, 1) or an integer >= 1, got {test_size}"
+            )
+
+        train_size = len(self) - real_test_size - self.timeline_size + 1
+        train_dataset = Subset(self, indices=th.arange(train_size))
+
+        test_dataset = Subset(self, indices=th.arange(len(self) - real_test_size, len(self)))
+
+        return train_dataset, test_dataset
 
 
 class InferenceDataset(TimelineDataset, abc.ABC):

@@ -9,7 +9,7 @@ from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from torch.distributed import destroy_process_group, init_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 from transformers import BertConfig, EncoderDecoderConfig, EncoderDecoderModel, GPT2Config
 
 from ethos.model import GPT2LMNoBiasModel
@@ -90,13 +90,7 @@ def main(cfg: DictConfig):
     tokens_of_interest = {stoken: vocab.encode(stoken) for stoken in tokens_of_interest}
 
     # DATASETS
-    val_size = int(cfg.val_size * 1_000_000)
-    train_dataset, val_dataset = (
-        Subset(train_dataset, indices=indices)
-        for indices in th.split_with_sizes(
-            th.arange(len(train_dataset)), [len(train_dataset) - val_size, val_size]
-        )
-    )
+    train_dataset, val_dataset = train_dataset.train_test_split(cfg.val_size)
 
     train_dataloader = DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=True)
     train_dataloader = make_infinite_loader(train_dataloader)
