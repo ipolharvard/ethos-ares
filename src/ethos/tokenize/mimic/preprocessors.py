@@ -1,5 +1,3 @@
-from datetime import time
-
 import numpy as np
 import polars as pl
 
@@ -15,14 +13,7 @@ class DeathData:
         gb_cols = MatchAndRevise.sort_cols
         idx_col = MatchAndRevise.index_col
         return (
-            df.with_columns(
-                # If time is 0 in datetime, it means there is no information about exact time;
-                # then move the death to the end of the day (23:59:59)
-                pl.when(pl.col("code") == str(ST.DEATH), pl.col("time").dt.time() == 0)
-                .then(pl.col("time").dt.combine(time=time(23, 59, 59)))
-                .otherwise("time")
-            )
-            .sort(pl.col("code").replace_strict(ST.DEATH, 0, default=1, return_dtype=pl.UInt8))
+            df.sort(pl.col("code").replace_strict(ST.DEATH, 0, default=1, return_dtype=pl.UInt8))
             .group_by(gb_cols, maintain_order=True)
             .agg(pl.col(idx_col).last(), pl.exclude(gb_cols, idx_col))
             .explode(pl.exclude(gb_cols, idx_col))
@@ -539,7 +530,6 @@ class BMIData:
     @staticmethod
     @MatchAndRevise(prefix=["BMI", "Q"])
     def join_token_and_quantile(df: pl.DataFrame) -> pl.DataFrame:
-        """TODO: This one should be done in transform_to_quantiles"""
         q_following_bmi_mask = (pl.col("code") == "BMI").shift(1)
         return df.with_columns(
             code=pl.when(q_following_bmi_mask)
@@ -561,7 +551,8 @@ class LabData:
     def make_quantiles(
         df: pl.DataFrame, counts: dict[str, int] | None = None, vocab: list[str] | None = None
     ) -> pl.DataFrame:
-        # TODO: we run some simple analysis and decided to keep 200 most frequent labs
+        # TODO: we've run a simple analysis and decided to keep 200 most frequent labs
+        # as the cover most of all the labs in the dataset
         known_lab_names = list(counts.keys())[:200] if vocab is None else vocab
         return (
             df.filter(unify_code_names(pl.col("code")).is_in(known_lab_names))
