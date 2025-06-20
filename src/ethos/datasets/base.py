@@ -239,3 +239,17 @@ class InferenceDataset(TimelineDataset, abc.ABC):
             mask = ordered_sequence_indices < len(ordered_sequence)
             out[mask] = ordered_sequence[ordered_sequence_indices[mask]]
             return out
+
+    def _move_idx_to_last_same_time(self, token_index: th.Tensor) -> th.Tensor:
+        """Shifts index to the last token with the same time of the token at the index."""
+        data_end_idx = self.patient_data_end_at_idx[token_index]
+        times = self.times[token_index : data_end_idx - 1]
+        idx_offset = th.searchsorted(times[1:], times[0], right=True)
+        return token_index + idx_offset
+
+    def _move_indices_to_last_same_time(self, token_indices: th.Tensor) -> th.Tensor:
+        """Shifts indices to the last token with the same time of the token at the index."""
+        new_indices = th.empty_like(token_indices)
+        for i, idx in enumerate(token_indices):
+            new_indices[i] = self._move_idx_to_last_same_time(idx)
+        return new_indices
