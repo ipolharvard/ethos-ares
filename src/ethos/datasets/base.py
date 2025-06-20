@@ -163,11 +163,16 @@ class TimelineDataset(th.utils.data.Dataset):
                 elif len(token["code"]) == 1:
                     static_tokens.append(token["code"][0])
                 else:
-                    idx = self._find_closest_index(token["time"], time_at_start)
-                    static_tokens.append(token["code"][idx])
+                    idx = self._find_idx_of_last_smaller_or_equal(token["time"], time_at_start)
+                    code = (
+                        token["code"][0].split("//")[0] + "//UNKNOWN"
+                        if idx == -1
+                        else token["code"][idx]
+                    )
+                    static_tokens.append(code)
         return th.tensor(self.vocab.encode(static_tokens))
 
-    def _age_to_tokens(self, age_years: float) -> tuple[str]:
+    def _age_to_tokens(self, age_years: float) -> tuple[str, str]:
         age_scaled = age_years * self._num_quantiles**2 / 100
         age_scaled = min(age_scaled, self._num_quantiles**2 - 1)
 
@@ -180,8 +185,12 @@ class TimelineDataset(th.utils.data.Dataset):
         return f"Q{age_t1 + 1}", f"Q{age_t2 + 1}"
 
     @staticmethod
-    def _find_closest_index(ll: list, target_value: float) -> int:
-        return min(range(len(ll)), key=lambda i: abs(ll[i] - target_value))
+    def _find_idx_of_last_smaller_or_equal(ll: Sequence, value: float) -> int:
+        """Assumes ll is sorted in ascending order."""
+        indices = [i for i, v in enumerate(ll) if v <= value]
+        if indices:
+            return indices[-1]
+        raise -1
 
     @staticmethod
     def tensorize(in_fp: str | Path | list, out_fp: str | Path, vocab: Vocabulary):
