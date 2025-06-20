@@ -55,15 +55,11 @@ ed | cxr)
 esac
 
 EVENT_CONVERSION_CONFIG_FP="$(pwd)/mimic/configs/event_configs${extension_suffix}.yaml"
-PIPELINE_CONFIG_FP="$(pwd)/mimic/configs/extract_MIMIC.yaml"
-PRE_MEDS_PY_FP="$(pwd)/mimic/pre_MEDS.py"
-
 # We export these variables separately from their assignment so that any errors during assignment are caught.
 export EVENT_CONVERSION_CONFIG_FP
-export PIPELINE_CONFIG_FP
-export PRE_MEDS_PY_FP
 
 echo "Running pre-MEDS conversion."
+PRE_MEDS_PY_FP="$(pwd)/mimic/pre_MEDS.py"
 python "$PRE_MEDS_PY_FP" input_dir="$MIMICIV_RAW_DIR" cohort_dir="$MIMICIV_PRE_MEDS_DIR"
 
 if [ -z "$N_WORKERS" ]; then
@@ -72,5 +68,5 @@ if [ -z "$N_WORKERS" ]; then
 fi
 
 echo "Running extraction pipeline."
-MEDS_transform-runner "pipeline_config_fp=$PIPELINE_CONFIG_FP" \
-    stage_runner_fp=local_parallelism_runner.yaml
+PIPELINE_CONFIG_FP="$(pwd)/mimic/configs/extract_MIMIC.yaml"
+MEDS_transform-pipeline "pipeline_config_fp=$PIPELINE_CONFIG_FP"

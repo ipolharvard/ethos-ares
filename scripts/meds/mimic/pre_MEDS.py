@@ -9,8 +9,9 @@ from pathlib import Path
 import hydra
 import polars as pl
 from loguru import logger
-from MEDS_transforms.extract.utils import get_supported_fp
-from MEDS_transforms.utils import get_shard_prefix, write_lazyframe
+from MEDS_extract.extract_code_metadata.utils import get_supported_fp
+from MEDS_extract.shard_events.shard_events import get_shard_prefix
+from MEDS_transforms.dataframe import write_df
 from omegaconf import DictConfig
 
 
@@ -248,6 +249,8 @@ def main(cfg: DictConfig):
 
         try:
             fp, read_fn = get_supported_fp(input_dir, pfx)
+            if isinstance(fp, list):
+                fp = sorted(fp, key=lambda path: len(str(path)))[0]
         except FileNotFoundError:
             logger.info(
                 f"Skipping {pfx} @ {str(in_fp.resolve())} as "
@@ -256,7 +259,7 @@ def main(cfg: DictConfig):
             continue
 
         if fp.suffix in [".csv", ".csv.gz"]:
-            read_fn = partial(read_fn, infer_schema_length=100000)
+            read_fn = partial(read_fn, infer_schema_length=None)
 
         if str(fp.resolve()) in seen_fps:
             continue
@@ -292,7 +295,7 @@ def main(cfg: DictConfig):
                 df = read_fn(fp)
                 logger.info(f"  Loaded raw {fp} in {datetime.now() - st}")
                 processed_df = fn(df)
-                write_lazyframe(processed_df, out_fp)
+                write_df(processed_df, out_fp)
                 logger.info(
                     f"  Processed and wrote to {str(out_fp.resolve())} in {datetime.now() - st}"
                 )
@@ -331,7 +334,7 @@ def main(cfg: DictConfig):
             fp_df = seen_fps[str(fp.resolve())](fp)
             logger.info(f"    Loaded in {datetime.now() - fp_st}")
             processed_df = fn(fp_df, df)
-            write_lazyframe(processed_df, out_fp)
+            write_df(processed_df, out_fp)
             logger.info(
                 f"    Processed and wrote to {str(out_fp.resolve())} in {datetime.now() - fp_st}"
             )

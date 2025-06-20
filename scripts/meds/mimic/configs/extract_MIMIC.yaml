@@ -1,43 +1,49 @@
 defaults:
-  - _extract
+  - _pipeline
   - _self_
 
+etl_metadata.pipeline_name: "extract"
+
 description: |-
-  This pipeline extracts the MIMIC-IV dataset in longitudinal, sparse form from an input dataset meeting
-  select criteria and converts them to the flattened, MEDS format. You can control the key arguments to this
-  pipeline by setting environment variables:
-  ```bash
-    export EVENT_CONVERSION_CONFIG_FP=# Path to your event conversion config
-    export MIMICIV_PRE_MEDS_DIR=# Path to the output dir of the pre-MEDS step
-    export MIMICIV_MEDS_COHORT_DIR=# Path to where you want the dataset to live
-  ```
+  This pipeline extracts raw MEDS events in longitudinal, sparse form from an input dataset meeting select
+  criteria and converts them to the flattened, MEDS format. It can be run in its entirety, with controllable
+  levels of parallelism, or in stages. Arguments:
+    - `event_conversion_config_fp`: The path to the event conversion configuration file. This file defines
+      the events to extract from the various rows of the various input files encountered in the global input
+      directory.
+    - `input_dir`: The path to the directory containing the raw input files.
+    - `output_dir`: The path to the directory where the output cohort will be written. It will be written in
+      various subfolders of this dir depending on the stage, as intermediate stages cache their output during
+      computation for efficiency of re-running and distributing.
+
 
 # The event conversion configuration file is used throughout the pipeline to define the events to extract.
 event_conversion_config_fp: ${oc.env:EVENT_CONVERSION_CONFIG_FP}
 
+shards_map_fp: "${output_dir}/metadata/.shards.json"
+
+
 input_dir: ${oc.env:MIMICIV_PRE_MEDS_DIR}
-cohort_dir: ${oc.env:MIMICIV_MEDS_COHORT_DIR}
-
-etl_metadata:
-  dataset_name: MIMIC-IV
-  dataset_version: 2.2
-
-stage_configs:
-  shard_events:
-    infer_schema_length: null
-  split_and_shard_subjects:
-    n_subjects_per_shard: 20000
-    split_fracs:
-      train: 0.9
-      test: 0.1
-      tuning: null
-      held_out: null
+output_dir: ${oc.env:MIMICIV_MEDS_COHORT_DIR}
 
 stages:
-  - shard_events
-  - split_and_shard_subjects
-  - convert_to_sharded_events
+  - shard_events:
+      data_input_dir: "${input_dir}"
+      infer_schema_length: null
+  - split_and_shard_subjects:
+      n_subjects_per_shard: 20000
+      split_fracs:
+        train: 0.9
+        test: 0.1
+        tuning: null
+        held_out: null
+  - convert_to_subject_sharded
+  - convert_to_MEDS_events
   - merge_to_MEDS_cohort
   - extract_code_metadata
   - finalize_MEDS_metadata
   - finalize_MEDS_data
+
+parallelize:
+  n_workers: ${oc.env:N_WORKERS}
+  launcher: "joblib"

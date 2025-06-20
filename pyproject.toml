@@ -24,7 +24,7 @@ dependencies = [
     "hydra-core==1.3.2",
     "hydra-joblib-launcher",
     "loguru",
-    "meds_transforms==0.1.1",
+    "meds_transforms==0.5.1",
     "numpy",
     "polars",
     "pyarrow==20.0.0",
