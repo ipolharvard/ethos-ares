@@ -16,6 +16,49 @@ ed/edstays:
     stay_id: stay_id
 
 ed/triage:
+  temperature:
+    code: TEMPERATURE
+    numeric_value: temperature
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+    stay_id: stay_id
+  heart_rate:
+    code: HEART_RATE
+    numeric_value: heartrate
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+    stay_id: stay_id
+  respiratory_rate:
+    code: RESPIRATORY_RATE
+    numeric_value: resprate
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+    stay_id: stay_id
+  o2_saturation:
+    code: O2_SATURATION
+    numeric_value: o2sat
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+    stay_id: stay_id
+  blood_pressure:
+    code: "Blood Pressure"
+    numeric_value: sbp
+    text_value: dbp
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+    stay_id: stay_id
+  pain:
+    code: PAIN
+    text_value: pain
+    time: col(charttime)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+    stay_id: stay_id
   acuity:
     code: ACUITY
     numeric_value: acuity
