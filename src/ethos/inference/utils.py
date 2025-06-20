@@ -2,10 +2,10 @@ import time
 from collections.abc import Generator, Sequence
 from pathlib import Path
 from queue import Queue
-from loguru import logger
 
 import polars as pl
 import torch as th
+from loguru import logger
 from torch.nn import functional as F
 
 from ..datasets import (
@@ -175,8 +175,8 @@ def write_results_to_parquet(
 def wait_for_workers(output_dir: str | Path, sleep_time: int = 2):
     time_slept = 0
     output_dir = Path(output_dir)
-    while any(output_dir.glob(".*.parquet_cache/locks/*.json")):
+    while any(output_dir.glob("*.lock")):
         time.sleep(sleep_time)
         time_slept += sleep_time
         if time_slept > 30:
-            logger.warning(f"Waiting for: {list(output_dir.glob('.*.parquet_cache/locks/*.json'))}")
+            logger.warning(f"Waiting for: {list(output_dir.glob('*lock'))}")
