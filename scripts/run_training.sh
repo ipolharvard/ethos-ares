@@ -8,20 +8,8 @@
 # this script is intended to be run from the project root
 export OMP_NUM_THREADS=20
 
-dataset=${1//-/_}
-
-case $dataset in
-mimic*)
-    dataset_name="mimic"
-    ;;
-mgb*)
-    dataset_name="mgb"
-    ;;
-*)
-    echo "Wrong experiment: '$1', available are: 'mimic', 'mgb'"
-    exit 1
-    ;;
-esac
+dataset="mimic_ed"
+dataset_name="mimic"
 
 data_path=data/tokenized_datasets/$dataset
 clear
@@ -76,9 +64,10 @@ torchrun --no_python --standalone --nproc_per_node=\${NUM_GPUS} ethos_train \
   log_interval=10 \
   eval_interval=1500 \
   gradient_accumulation_steps=16 \
-  max_iters=3000000 \
-  lr_decay_iters=50000 \
-  wandb_log=True \
+  warmup_iters=5000 \
+  max_iters=200000 \
+  lr_decay_iters=100000 \
+  wandb_log=true \
   wandb_project="ethos-meds-$dataset_name" \
   wandb_run_name=$model_name \
   $* \
