@@ -86,14 +86,16 @@ def main(cfg: DictConfig):
     vocab_size = math.ceil(len(vocab) / 64) * 64
 
     train_dataset, val_dataset = train_dataset.train_test_split(cfg.val_size)
-    train_dataloader = make_infinite_loader(
+    train_dataloader, val_dataloader = (
         DataLoader(
-            train_dataset,
+            dataset,
             batch_size=cfg.batch_size,
             shuffle=not ddp,
-            sampler=DistributedSampler(train_dataset) if ddp else None,
+            sampler=DistributedSampler(dataset) if ddp else None,
         )
+        for dataset in [train_dataset, val_dataset]
     )
+    train_dataloader = make_infinite_loader(train_dataloader)
 
     eval_iters = len(val_dataset) // (cfg.batch_size * cfg.n_positions) + 1
     if master_process:
@@ -103,7 +105,7 @@ def main(cfg: DictConfig):
             )
         )
 
-    def get_batch(split) -> tuple[th.Tensor | tuple, th.Tensor]:
+    def get_batch() -> tuple[th.Tensor | tuple, th.Tensor]:
         x, y = next(train_dataloader)
         y = y.to(device, non_blocking=True)
         if isinstance(x, list):
@@ -204,7 +206,7 @@ def main(cfg: DictConfig):
         online_logger = wandb
 
     # training loop
-    X, Y = get_batch("train")  # fetch the very first batch
+    X, Y = get_batch()  # fetch the very first batch
     t0 = time.time()
     local_iter_num = 0  # number of iterations in the lifetime of this process
     running_mfu = -1.0
@@ -216,7 +218,12 @@ def main(cfg: DictConfig):
 
         # evaluate the loss on train/val sets and write checkpoints
         if iter_num % cfg.eval_interval == 0:
-            losses = estimate_loss(model, ctx, train_dataset, val_dataset, cfg)
+            losses = estimate_loss(
+                model,
+                ctx,
+                loaders=[("train", train_dataloader), ("val", val_dataloader)],
+                eval_iters=eval_iters,
+            )
             if ddp:
                 for key in ["loss/train", "loss/val"]:
                     output = [None] * ddp_world_size
@@ -282,7 +289,7 @@ def main(cfg: DictConfig):
                     loss / cfg.gradient_accumulation_steps
                 )  # scale the loss to account for gradient accumulation
             # immediately async prefetch next batch while model is doing the forward pass on the GPU
-            X, Y = get_batch("train")
+            X, Y = get_batch()
             # backward pass, with gradient scaling if training in fp16
             scaler.scale(loss).backward()
         # clip the gradient
