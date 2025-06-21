@@ -16,9 +16,9 @@ n_jobs: 1 # jobs per cpu or per gpu
 n_gpus: 1
 no_compile: false # compilation might not work on older systems
 
-result_chunk_size: 32000
+result_chunk_size: 128000
 chunksize: 1
-timeout: 180
+timeout: 300
 
 seed: 42
 

@@ -11,22 +11,15 @@ from .base import InferenceDataset
 
 
 class _InferenceAtTriageDataset(InferenceDataset, ABC):
-    """The dataset assumes that after each patient's triage, a time interval token is included to
-    encapsulate all information acquired during the triage. Rare exceptions exist, but they are
-    negligible.
-
-    Timelines are truncated to end at the last event occurring before this time interval token.
-    """
+    """The base class for datasets that generate patient timelines ending at the last token related
+    to triage at the ED."""
 
     outcome_indices: th.Tensor
 
     def __init__(self, input_dir: str | Path, n_positions: int = 2048, **kwargs):
         super().__init__(input_dir, n_positions, **kwargs)
         self.ed_reg_indices = self._get_indices_of_stokens(ST.ED_ADMISSION)
-        time_token_or_end_indices = self._get_indices_of_stokens(
-            [*self.vocab.time_interval_stokens, ST.TIMELINE_END]
-        )
-        self.start_indices = self._match(time_token_or_end_indices, self.ed_reg_indices) - 1
+        self.start_indices = self._move_indices_to_last_same_time(self.ed_reg_indices)
 
     def __len__(self) -> int:
         return len(self.start_indices)

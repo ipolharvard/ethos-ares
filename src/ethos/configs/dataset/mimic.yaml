@@ -10,8 +10,8 @@ stages:
         - eGFR
         - PROCEDURE//START
         - PROCEDURE//END
-#        - MEDICATION//START//
-#        - SUBJECT_FLUID_OUTPUT//
+        - MEDICATION//START//
+        - SUBJECT_FLUID_OUTPUT//
       is_prefix: true
 
   - name: preprocessing
@@ -64,7 +64,6 @@ stages:
         - BMI//Q
         - VITAL//Q//
         - SUBJECT_FLUID_OUTPUT//Q//
-        - ED_ACUITY//Q
     agg_to: ${output_dir}/${quantiles_fn}
     agg_params:
       num_quantiles: ${num_quantiles}

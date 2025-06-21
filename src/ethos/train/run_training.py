@@ -1,21 +1,19 @@
+import math
 import os
 import time
 from pathlib import Path
 
 import hydra
-import numpy as np
 import torch as th
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from torch.distributed import destroy_process_group, init_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, DistributedSampler
 from transformers import BertConfig, EncoderDecoderConfig, EncoderDecoderModel, GPT2Config
 
-from ethos.model import GPT2LMNoBiasModel
-
-from ..constants import SpecialToken as ST
 from ..datasets import TimelineDataset
+from ..model import GPT2LMNoBiasModel
 from ..utils import load_model_checkpoint, setup_torch
 from .metrics import estimate_loss
 from .utils import ModelType, configure_optimizers, estimate_mfu, get_lr, make_infinite_loader
@@ -85,24 +83,19 @@ def main(cfg: DictConfig):
     )
     vocab = train_dataset.vocab
 
-    vocab_size = (len(vocab) // 64 + 1) * 64 if len(vocab) % 64 != 0 else len(vocab)
-    tokens_of_interest = [ST.DEATH, ST.ADMISSION, ST.DISCHARGE]
-    tokens_of_interest = {stoken: vocab.encode(stoken) for stoken in tokens_of_interest}
+    vocab_size = math.ceil(len(vocab) / 64) * 64
 
-    # DATASETS
-    val_size = int(cfg.val_size * 1_000_000)
-    train_dataset, val_dataset = (
-        Subset(train_dataset, indices=indices)
-        for indices in th.split_with_sizes(
-            th.arange(len(train_dataset)), [len(train_dataset) - val_size, val_size]
+    train_dataset, val_dataset = train_dataset.train_test_split(cfg.val_size)
+    train_dataloader, val_dataloader = (
+        DataLoader(
+            dataset,
+            batch_size=cfg.batch_size,
+            shuffle=not ddp,
+            sampler=DistributedSampler(dataset) if ddp else None,
         )
+        for dataset in [train_dataset, val_dataset]
     )
-
-    train_dataloader = DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=True)
     train_dataloader = make_infinite_loader(train_dataloader)
-
-    val_dataloader = DataLoader(val_dataset, batch_size=cfg.batch_size, shuffle=True)
-    val_dataloader = make_infinite_loader(val_dataloader)
 
     eval_iters = len(val_dataset) // (cfg.batch_size * cfg.n_positions) + 1
     if master_process:
@@ -112,9 +105,8 @@ def main(cfg: DictConfig):
             )
         )
 
-    def get_batch(split) -> tuple[th.Tensor | tuple, th.Tensor]:
-        data = train_dataloader if split == "train" else val_dataloader
-        x, y = next(data)
+    def get_batch() -> tuple[th.Tensor | tuple, th.Tensor]:
+        x, y = next(train_dataloader)
         y = y.to(device, non_blocking=True)
         if isinstance(x, list):
             return (x[0].to(device, non_blocking=True), x[1].to(device, non_blocking=True)), y
@@ -214,7 +206,7 @@ def main(cfg: DictConfig):
         online_logger = wandb
 
     # training loop
-    X, Y = get_batch("train")  # fetch the very first batch
+    X, Y = get_batch()  # fetch the very first batch
     t0 = time.time()
     local_iter_num = 0  # number of iterations in the lifetime of this process
     running_mfu = -1.0
@@ -225,53 +217,58 @@ def main(cfg: DictConfig):
             param_group["lr"] = lr
 
         # evaluate the loss on train/val sets and write checkpoints
-        if iter_num % cfg.eval_interval == 0 and master_process:
-            losses = estimate_loss(model, ctx, get_batch, eval_iters, tokens_of_interest)
-            logger.info(
-                "step {}: train loss {:.4f}, val loss {:.4f}".format(
-                    iter_num,
-                    losses["loss/train"],
-                    losses["loss/val"],
+        if iter_num % cfg.eval_interval == 0:
+            losses = estimate_loss(
+                model,
+                ctx,
+                loaders=[("train", train_dataloader), ("val", val_dataloader)],
+                eval_iters=eval_iters,
+            )
+            if ddp:
+                for key in ["loss/train", "loss/val"]:
+                    output = [None] * ddp_world_size
+                    th.distributed.all_gather_object(output, losses[key])
+                    losses[key] = sum(output) / ddp_world_size
+            if master_process:
+                logger.info(
+                    "step {}: train loss {:.4f}, val loss {:.4f}".format(
+                        iter_num,
+                        losses["loss/train"],
+                        losses["loss/val"],
+                    )
                 )
-            )
-            checkpoint = {
-                "iter_num": iter_num,
-                "model": raw_model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "best_val_loss": losses["loss/val"],
-                "best_metric_score": best_metric_score,
-                "model_config": raw_model.config,
-                "vocab": vocab.stoi,
-                "model_type": str(model_type),
-                "wandb_path": wandb_run.path if wandb_run is not None else None,
-            }
-            th.save(checkpoint, out_dir / "recent_model.pt")
-            logger.info("Saved the most recent model.")
-            if losses["loss/val"] < best_val_loss:
-                th.save(checkpoint, out_dir / "best_model.pt")
-                logger.info(f"Saved the best model: {best_val_loss} => {losses['loss/val']}")
-                best_val_loss = losses["loss/val"]
-
-            metric_score = np.mean(
-                [v for k, v in losses.items() if k.startswith("acc_top/") and "/all/" not in k]
-            )
-            if metric_score > best_metric_score:
-                th.save(checkpoint, out_dir / "toi_metric_model.pt")
-                logger.info(f"Saved the best metrics model: {best_metric_score} => {metric_score}")
-                best_metric_score = metric_score
-
-            if online_logger is not None:
-                epochs = iter_num * tokens_per_iter / len(train_dataset)
-                online_logger.log(
-                    {
-                        "other/iter": iter_num,
-                        "other/lr": lr,
-                        "other/mfu": running_mfu * 100,
-                        "other/toi_avg_score": metric_score,
-                        "other/epochs": epochs,
-                        **losses,
+                if iter_num > 0:
+                    checkpoint = {
+                        "iter_num": iter_num,
+                        "model": raw_model.state_dict(),
+                        "optimizer": optimizer.state_dict(),
+                        "best_val_loss": losses["loss/val"],
+                        "best_metric_score": best_metric_score,
+                        "model_config": raw_model.config,
+                        "vocab": vocab.stoi,
+                        "model_type": str(model_type),
+                        "wandb_path": wandb_run.path if wandb_run is not None else None,
                     }
-                )
+                    th.save(checkpoint, out_dir / "recent_model.pt")
+                    logger.info("Saved the most recent model.")
+                    if losses["loss/val"] < best_val_loss:
+                        th.save(checkpoint, out_dir / "best_model.pt")
+                        logger.info(
+                            f"Saved the best model: {best_val_loss} => {losses['loss/val']}"
+                        )
+                        best_val_loss = losses["loss/val"]
+
+                    if online_logger is not None:
+                        epochs = iter_num * tokens_per_iter / len(train_dataset)
+                        online_logger.log(
+                            {
+                                "other/iter": iter_num,
+                                "other/lr": lr,
+                                "other/mfu": running_mfu * 100,
+                                "other/epochs": epochs,
+                                **losses,
+                            }
+                        )
 
         # forward backward update, with optional gradient accumulation to simulate larger batch size
         # and using the GradScaler if data type is float16
@@ -292,7 +289,7 @@ def main(cfg: DictConfig):
                     loss / cfg.gradient_accumulation_steps
                 )  # scale the loss to account for gradient accumulation
             # immediately async prefetch next batch while model is doing the forward pass on the GPU
-            X, Y = get_batch("train")
+            X, Y = get_batch()
             # backward pass, with gradient scaling if training in fp16
             scaler.scale(loss).backward()
         # clip the gradient
