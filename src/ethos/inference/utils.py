@@ -2,10 +2,10 @@ import time
 from collections.abc import Generator, Sequence
 from pathlib import Path
 from queue import Queue
-from loguru import logger
 
 import polars as pl
 import torch as th
+from loguru import logger
 from torch.nn import functional as F
 
 from ..datasets import (
@@ -114,7 +114,7 @@ def get_token_time(tokens: Sequence, vocab) -> th.Tensor:
     )
 
 
-@th.no_grad()
+@th.inference_mode
 def get_next_token(
     model,
     x: th.Tensor,
