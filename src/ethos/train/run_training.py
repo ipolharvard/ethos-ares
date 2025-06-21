@@ -12,9 +12,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import BertConfig, EncoderDecoderConfig, EncoderDecoderModel, GPT2Config
 
-from ethos.model import GPT2LMNoBiasModel
-
 from ..datasets import TimelineDataset
+from ..model import GPT2LMNoBiasModel
 from ..utils import load_model_checkpoint, setup_torch
 from .metrics import estimate_loss
 from .utils import ModelType, configure_optimizers, estimate_mfu, get_lr, make_infinite_loader
