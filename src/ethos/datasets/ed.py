@@ -31,7 +31,6 @@ class _InferenceAtTriageDataset(InferenceDataset, ABC):
 
         ed_hadm_id = self._get_hadm_id(ed_reg_idx)
         return super().__getitem__(start_idx), {
-            "expected": ed_hadm_id is not None and self._get_hadm_id(outcome_idx) == ed_hadm_id,
             "true_token_dist": (outcome_idx - start_idx).item(),
             "true_token_time": (self.times[outcome_idx] - self.times[start_idx]).item(),
             "patient_id": self.patient_id_at_idx[start_idx].item(),
@@ -61,6 +60,13 @@ class HospitalAdmissionAtTriageDataset(_InferenceAtTriageDataset):
         # TODO: Explain why fill with 0. It doesn't make sense but it does the job.
         self.outcome_indices = self._match(adm_indices, self.ed_reg_indices, fill_unmatched=0)
 
+    def __getitem__(self, idx) -> tuple[th.Tensor, dict]:
+        x, y = super().__getitem__(idx)
+        outcome_idx = self.outcome_indices[idx]
+        ed_reg_hadm_id = y["hadm_id"]
+        expected = ed_reg_hadm_id is not None and self._get_hadm_id(outcome_idx) == ed_reg_hadm_id
+        return x, {"expected": expected, **y}
+
 
 class CriticalOutcomeAtTriageDataset(_InferenceAtTriageDataset):
     """Generates patient timelines ending at the last token corresponding to the result of the
@@ -79,11 +85,17 @@ class CriticalOutcomeAtTriageDataset(_InferenceAtTriageDataset):
 
     def __init__(self, input_dir: str | Path, n_positions: int = 2048, **kwargs):
         super().__init__(input_dir, n_positions, **kwargs)
-        self.stop_stokens = [ST.ICU_ADMISSION] + self.stop_stokens
-        icu_adm_or_dth_indices = self._get_indices_of_stokens([ST.ICU_ADMISSION, ST.DEATH])
+        self.stop_stokens = [ST.ICU_ADMISSION, ST.DISCHARGE] + self.stop_stokens
+        stop_stoken_indices = self._get_indices_of_stokens(self.stop_stokens)
         self.outcome_indices = self._match(
-            icu_adm_or_dth_indices, self.ed_reg_indices, fill_unmatched=0
+            stop_stoken_indices, self.ed_reg_indices, fill_unmatched=0
         )
+        self.dth_indices = self._get_indices_of_stokens(ST.DEATH)
+
+    def __getitem__(self, idx) -> tuple[th.Tensor, dict]:
+        x, y = super().__getitem__(idx)
+        outcome_idx = self.outcome_indices[idx]
+        return x, {"expected": self.vocab.decode(self.tokens[outcome_idx]), **y}
 
 
 class EdReattendenceDataset(InferenceDataset):
