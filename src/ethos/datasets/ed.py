@@ -62,9 +62,7 @@ class HospitalAdmissionAtTriageDataset(_InferenceAtTriageDataset):
 
     def __getitem__(self, idx) -> tuple[th.Tensor, dict]:
         x, y = super().__getitem__(idx)
-        outcome_idx = self.outcome_indices[idx]
-        ed_reg_hadm_id = y["hadm_id"]
-        expected = ed_reg_hadm_id is not None and self._get_hadm_id(outcome_idx) == ed_reg_hadm_id
+        expected = y["hadm_id"] is not None
         return x, {"expected": expected, **y}
 
 
