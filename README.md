@@ -60,13 +60,13 @@ of `ed`, it requires the MIMIC-IV-ED extension to be present in the input direct
 ```bash
 export N_WORKERS=7
 
-# Please define output_dir, strogly suggested is <PROJECT_ROOT>/data
+# Please define output_dir, strongly suggested is <PROJECT_ROOT>/data
 suffix="ed" # or ""
 
 bash run_mimic.sh \
     "$MIMIC_IV_DIR" \
-    "$output_dir/mimic-2.2-premeds$suffix" \
-    "$output_dir/mimic-2.2-meds$suffix" \
+    "$output_dir/mimic-2.2-premeds" \
+    "$output_dir/mimic-2.2-meds-$suffix" \
     "$suffix"
 ```
 
@@ -191,25 +191,6 @@ ethos_infer \
 ```
 
 See the full example in `scripts/run_inference.sh`.
-
-4. `ethos_synth` - converts timelines generated in the inference step (the `synthetic` task) into a Patient Helath Timelines dataset, that can be used for training.
-
-Example of creating a standalone `big_synth` dataset based on `big`, meaning it will have the same vocabulary, patient static information and other properties as `big`.
-
-```bash
-ethos_synth \
-    input_dir=results/synthetic/mimic_synth_layer_3_do_0.3_big_best_mpew57w3/ \
-    dataset_dir=$out_dir/big \
-    output_dir=$out_dir/big_synth
-```
-
-Example of adding synthetic `small` data to the `big+small_synth` dataset, presumably it already contains `big`.
-
-```bash
-ethos_synth \
-    input_dir=results/synthetic/mimic_synth_layer_3_do_0.3_small_best_masd123/ \
-    dataset_dir=$out_dir/big+small_synth
-```
 
 ## Cite us
 
