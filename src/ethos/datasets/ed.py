@@ -125,10 +125,7 @@ class EdReattendenceDataset(InferenceDataset):
             [idx for idx in ed_out_indices if self._get_hadm_id(idx) is None]
         )
 
-        time_token_or_end_indices = self._get_indices_of_stokens(
-            [*self.vocab.time_interval_stokens, ST.TIMELINE_END]
-        )
-        self.start_indices = self._match(time_token_or_end_indices, ed_out_indices) - 1
+        self.start_indices = self._move_indices_to_last_same_time(ed_out_indices)
 
         ed_reg_or_end_indices = self._get_indices_of_stokens([ST.ED_ADMISSION, ST.TIMELINE_END])
         self.outcome_indices = self._match(ed_reg_or_end_indices, ed_out_indices)
