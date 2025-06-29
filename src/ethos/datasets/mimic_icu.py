@@ -97,6 +97,7 @@ class ICUAdmissionDataset(InferenceDataset):
             "true_token_time": (self.times[outcome_idx] - self.times[start_idx]).item(),
             "icu_stay_id": self._get_icu_stay_id(outcome_idx),
             "patient_id": self.patient_id_at_idx[start_idx].item(),
+            "prediction_time": self.times[start_idx].item(),
             "data_idx": start_idx.item(),
         }
 
@@ -149,5 +150,6 @@ class ICUReadmissionDataset(InferenceDataset):
             "icu_stay_id_start": self._get_icu_stay_id(icu_dc_idx),
             "icu_stay_id_outcome": self._get_icu_stay_id(outcome_idx),
             "patient_id": self.patient_id_at_idx[icu_dc_idx].item(),
+            "prediction_time": self.times[icu_dc_idx].item(),
             "data_idx": icu_dc_idx.item(),
         }
