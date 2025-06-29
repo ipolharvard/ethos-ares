@@ -164,11 +164,8 @@ def write_results_to_parquet(
 
     pl.from_dicts(results, infer_schema_length=None).with_columns(
         pl.col("^.*token_time$").cast(pl.Duration),
-        (
-            pl.col("generated_tokens").cast(pl.List(pl.UInt16))
-            if "generated_tokens" in results[0]
-            else "expected"
-        ),
+        pl.col("^generated_tokens$").cast(pl.List(pl.UInt16)),
+        pl.col("^prediction_time$").cast(int).cast(pl.Datetime),
     ).write_parquet(out_fp.with_suffix(".parquet"), use_pyarrow=True)
 
 
