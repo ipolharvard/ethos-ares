@@ -35,6 +35,7 @@ class HospitalMortalityBase(InferenceDataset, abc.ABC):
             "true_token_dist": (outcome_idx - start_idx).item(),
             "true_token_time": (self.times[outcome_idx] - self.times[start_idx]).item(),
             "patient_id": self.patient_id_at_idx[start_idx].item(),
+            "prediction_time": self.times[start_idx].item(),
             "data_idx": start_idx.item(),
         }
         if self.is_mimic:

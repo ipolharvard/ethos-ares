@@ -11,22 +11,15 @@ from .base import InferenceDataset
 
 
 class _InferenceAtTriageDataset(InferenceDataset, ABC):
-    """The dataset assumes that after each patient's triage, a time interval token is included to
-    encapsulate all information acquired during the triage. Rare exceptions exist, but they are
-    negligible.
-
-    Timelines are truncated to end at the last event occurring before this time interval token.
-    """
+    """The base class for datasets that generate patient timelines ending at the last token related
+    to triage at the ED."""
 
     outcome_indices: th.Tensor
 
     def __init__(self, input_dir: str | Path, n_positions: int = 2048, **kwargs):
         super().__init__(input_dir, n_positions, **kwargs)
         self.ed_reg_indices = self._get_indices_of_stokens(ST.ED_ADMISSION)
-        time_token_or_end_indices = self._get_indices_of_stokens(
-            [*self.vocab.time_interval_stokens, ST.TIMELINE_END]
-        )
-        self.start_indices = self._match(time_token_or_end_indices, self.ed_reg_indices) - 1
+        self.start_indices = self._move_indices_to_last_same_time(self.ed_reg_indices)
 
     def __len__(self) -> int:
         return len(self.start_indices)
@@ -38,11 +31,11 @@ class _InferenceAtTriageDataset(InferenceDataset, ABC):
 
         ed_hadm_id = self._get_hadm_id(ed_reg_idx)
         return super().__getitem__(start_idx), {
-            "expected": ed_hadm_id is not None and self._get_hadm_id(outcome_idx) == ed_hadm_id,
             "true_token_dist": (outcome_idx - start_idx).item(),
             "true_token_time": (self.times[outcome_idx] - self.times[start_idx]).item(),
             "patient_id": self.patient_id_at_idx[start_idx].item(),
             "hadm_id": ed_hadm_id,
+            "prediction_time": self.times[start_idx].item(),
             "data_idx": start_idx.item(),
         }
 
@@ -68,6 +61,11 @@ class HospitalAdmissionAtTriageDataset(_InferenceAtTriageDataset):
         # TODO: Explain why fill with 0. It doesn't make sense but it does the job.
         self.outcome_indices = self._match(adm_indices, self.ed_reg_indices, fill_unmatched=0)
 
+    def __getitem__(self, idx) -> tuple[th.Tensor, dict]:
+        x, y = super().__getitem__(idx)
+        expected = y["hadm_id"] is not None
+        return x, {"expected": expected, **y}
+
 
 class CriticalOutcomeAtTriageDataset(_InferenceAtTriageDataset):
     """Generates patient timelines ending at the last token corresponding to the result of the
@@ -86,11 +84,17 @@ class CriticalOutcomeAtTriageDataset(_InferenceAtTriageDataset):
 
     def __init__(self, input_dir: str | Path, n_positions: int = 2048, **kwargs):
         super().__init__(input_dir, n_positions, **kwargs)
-        self.stop_stokens = [ST.ICU_ADMISSION] + self.stop_stokens
-        icu_adm_or_dth_indices = self._get_indices_of_stokens([ST.ICU_ADMISSION, ST.DEATH])
+        self.stop_stokens = [ST.ICU_ADMISSION, ST.DISCHARGE] + self.stop_stokens
+        stop_stoken_indices = self._get_indices_of_stokens(self.stop_stokens)
         self.outcome_indices = self._match(
-            icu_adm_or_dth_indices, self.ed_reg_indices, fill_unmatched=0
+            stop_stoken_indices, self.ed_reg_indices, fill_unmatched=0
         )
+        self.dth_indices = self._get_indices_of_stokens(ST.DEATH)
+
+    def __getitem__(self, idx) -> tuple[th.Tensor, dict]:
+        x, y = super().__getitem__(idx)
+        outcome_idx = self.outcome_indices[idx]
+        return x, {"expected": self.vocab.decode(self.tokens[outcome_idx]), **y}
 
 
 class EdReattendenceDataset(InferenceDataset):
@@ -122,10 +126,7 @@ class EdReattendenceDataset(InferenceDataset):
             [idx for idx in ed_out_indices if self._get_hadm_id(idx) is None]
         )
 
-        time_token_or_end_indices = self._get_indices_of_stokens(
-            [*self.vocab.time_interval_stokens, ST.TIMELINE_END]
-        )
-        self.start_indices = self._match(time_token_or_end_indices, ed_out_indices) - 1
+        self.start_indices = self._move_indices_to_last_same_time(ed_out_indices)
 
         ed_reg_or_end_indices = self._get_indices_of_stokens([ST.ED_ADMISSION, ST.TIMELINE_END])
         self.outcome_indices = self._match(ed_reg_or_end_indices, ed_out_indices)
@@ -142,5 +143,6 @@ class EdReattendenceDataset(InferenceDataset):
             "true_token_dist": (outcome_idx - start_idx).item(),
             "true_token_time": (self.times[outcome_idx] - self.times[start_idx]).item(),
             "patient_id": self.patient_id_at_idx[start_idx].item(),
+            "prediction_time": self.times[start_idx].item(),
             "data_idx": start_idx.item(),
         }

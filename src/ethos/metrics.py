@@ -275,17 +275,15 @@ def load_results(input_dir: str | Path) -> pl.DataFrame:
 
     parquet_dfs = []
     if parquet_fps := list(input_dir.rglob("*.parquet")):
-        parquet_dfs = [
-            pl.read_parquet(res_path, glob=False).with_columns(pl.col("^.*time$").cast(pl.Duration))
-            for res_path in parquet_fps
-        ]
+        parquet_dfs = [pl.read_parquet(res_path, glob=False) for res_path in parquet_fps]
 
     # To be removed in the future
     json_dfs = []
     if json_fps := list(input_dir.rglob("*.json")):
         json_dfs = [
             pl.read_json(res_path, infer_schema_length=None).with_columns(
-                pl.col("^.*time$").cast(pl.Duration)
+                pl.col("^.*token_time$").cast(pl.Duration),
+                pl.col("^prediction_time$").cast(pl.Datetime),
             )
             for res_path in json_fps
         ]
@@ -318,7 +316,9 @@ def preprocess_inference_results(
         if warn_on_dropped and (dropped := prev_len - len(df)):
             logger.warning(f"Dropped {dropped:,} ({dropped / prev_len:.2%}) ambiguous results.")
 
-    optional_columns = [col for col in ("icu_stay_id", "hadm_id", "stay_id") if col in df.columns]
+    optional_columns = [
+        col for col in ("prediction_time", "icu_stay_id", "hadm_id", "stay_id") if col in df.columns
+    ]
     aggregations = [
         ("expected", "first"),
         ("actual", "mean"),

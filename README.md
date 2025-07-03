@@ -1,3 +1,7 @@
+> [!NOTE]
+> As of July 1st, 2025, we fixed a major mistake in the ED-related task labelling and used MIMIC
+> data. Please update your forks with the latest version.
+
 # ETHOS - EHR foundation model
 
 This repository implements Adaptive Risk Estimation System (ARES) for Hospital Mortality, ICU
@@ -5,8 +9,7 @@ Admission, Prolonged Length of Stay, and Composite (HM+IU+PLoS). In addition, it
 experiments conducted in our paper ([preprint](https://arxiv.org/abs/2502.06124)). It builds on our
 previous work on EHR foundation models by completely
 reimplementing [ETHOS](https://www.nature.com/articles/s41746-024-01235-0) (formerly
-available [here](https://github.com/ipolharvard/ethos-paper))
-to achieve higher performance, improved usability, robustness, and further expand our work.
+available [here](https://github.com/ipolharvard/ethos-paper)) to achieve higher performance, improved usability and robustness.
 
 ## Features
 
@@ -47,34 +50,7 @@ same data split if run on the same data with the same configuration (see `script
 We do not publish the tokenized dataset or the pretrained model due to restrictions on MIMIC
 derivatives, and we conclude that these components are not suitable for publication on PhysioNet.
 
-## Workflow
-
-Package entry points:
-
-1. `ethos_tokenize` - Example in `scripts/run_tokenization.sh`.
-2. `ethos_train` - Example in `scripts/run_training.sh`.
-3. `ethos_infer` - Example in `scripts/run_inference.sh`.
-
-## Installation
-
-[Optional] We strongly encourage the use of a virtual environment, for example, Conda:
-To create a new conda env:
-
-```bash
-conda create --name ethos python=3.12
-conda activate ethos
-```
-
-Fetch the project and set it up in the development mode (`-e`) and install all necessary
-dependencies for running notebooks and scripts by executing:
-
-```bash
-git clone https://github.com/ipolharvard/ethos-ares
-cd ethos-ares
-pip install -e .[jupyter]
-```
-
-## ETHOS tokenization guide
+## Pre-tokenization step
 
 ETHOS tokenization uses an intermediate
 format [MEDS](https://github.com/Medical-Event-Data-Standard/meds), extracted via
@@ -87,13 +63,13 @@ of `ed`, it requires the MIMIC-IV-ED extension to be present in the input direct
 ```bash
 export N_WORKERS=7
 
-# Please define output_dir, strogly suggested is <PROJECT_ROOT>/data
+# Please define output_dir, strongly suggested is <PROJECT_ROOT>/data
 suffix="ed" # or ""
 
 bash run_mimic.sh \
     "$MIMIC_IV_DIR" \
-    "$output_dir/mimic-2.2-premeds$suffix" \
-    "$output_dir/mimic-2.2-meds$suffix" \
+    "$output_dir/mimic-2.2-premeds" \
+    "$output_dir/mimic-2.2-meds-$suffix" \
     "$suffix"
 ```
 
@@ -115,9 +91,109 @@ split_and_shard_subjects:
         held_out: null
 ```
 
-Once data extraction is complete, you can tokenize using the `ethos_tokenize` command, demonstrated
+Once, the data extraction is complete, you can tokenize using the `ethos_tokenize` command, demonstrated
 in `scripts/run_tokenization.sh`. Ensure the file hierarchy matches what the script expects, or
 modify the script accordingly before running.
+
+## Installation
+
+[Optional] We strongly encourage the use of a virtual environment, for example, Conda:
+To create a new conda env:
+
+```bash
+conda create --name ethos python=3.12
+conda activate ethos
+```
+
+Fetch the project and set it up in the development mode (`-e`) and install all necessary
+dependencies for running notebooks and scripts by executing:
+
+```bash
+git clone https://github.com/ipolharvard/ethos-ares
+cd ethos-ares
+pip install -e .[jupyter]
+```
+
+## Package Scripts
+
+After installing the package, the below commands will become available for running from the command line.
+
+1. `ethos_tokenize` - tokenizes data in the MEDS format into Patient Health Timelines.
+
+Example of tokenization with parameters used for MIMIC-IV.
+
+```bash
+ethos_tokenize -m worker='range(0,7)' \  # spawns 7 workers
+    input_dir=$input_dir/train \  # `input_dir` is the path to the MEDS data
+    output_dir=$output_dir \
+    out_fn=train
+
+ethos_tokenize -m worker='range(0,2)' \
+    input_dir=$input_dir/test \
+    vocab=$output_dir/train \  # uses vocab created on the training split
+    output_dir=$output_dir \
+    out_fn=test
+```
+
+See the full example in `scripts/run_tokenization.sh`.
+
+2. `ethos_train` - runs the model training.
+
+Example of training a model in the 8GPU setting.
+
+```bash
+torchrun --no_python --standalone --nproc_per_node=8 ethos_train \
+  data_fp=$data_path/train \
+  val_size=6 \ # uses the last 6M tokens of train as the validation dataset
+  batch_size=$BATCH_SIZE \
+  max_epochs=300 \
+  out_dir="$data_path/models/${model_name}" # the path to save model checkpoints
+```
+
+See the full example in `scripts/run_training.sh`.
+
+3. `ethos_infer` - runs the inference of a chosen downstream tasks.
+
+Example of running the zero-shot inference for the 30-day readmission task with 32 repetitions per sample in the 8GPU setting.
+
+```bash
+ethos_infer \
+    task=readmission \ # see ethos.inference.constants for all available tasks
+    model_fp=$model_dir/$model/best_model.pt \
+    input_dir=$dataset_dir/test \
+    output_dir=results/$task_name/$dataset_$model \
+    output_fn=rep_size_32_\$(date +%Y-%m-%d_%H-%M-%S) \
+    rep_num=32 \
+    n_gpus=8
+```
+
+Example of running the zero-shot inference for the ICU admission task on the random 40% of the whole test set.
+
+```bash
+ethos_infer \
+    task=icu_admission \
+    model_fp=$model_dir/$model/best_model.pt \
+    input_dir=$dataset_dir/test \
+    output_dir=results/$task_name/$dataset_$model \
+    output_fn=rep_size_8\$(date +%Y-%m-%d_%H-%M-%S) \
+    rep_num=8 \
+    subset=0.4
+```
+
+Example of generating a synthetic dataset with the same demographic properties as the `train` dataset. Requires the `ethos_synth` step to convert it into a fully-fledged dataset that can be used for training.
+
+```bash
+ethos_infer \
+    task=synthetic \
+    model_fp=$model_dir/$model/best_model.pt \
+    input_dir=$dataset_dir/train \
+    output_dir=results/$task_name/$dataset_$model \
+    output_fn=synthetic_\$(date +%Y-%m-%d_%H-%M-%S) \
+    save_generated_tokens=true \ # it is crucial to saves the trajectories
+    n_gpus=8
+```
+
+See the full example in `scripts/run_inference.sh`.
 
 ## Cite us
 
@@ -155,7 +231,6 @@ Pawel Renc, Yugang Jia, Anthony E Samir, Jaroslaw Was, Quanzheng Li, David W Bat
 	issn = {2398-6352},
 	url = {https://www.nature.com/articles/s41746-024-01235-0},
 	doi = {10.1038/s41746-024-01235-0},
-	abstract = {Integrating modern machine learning and clinical decision-making has great promise for mitigating healthcare’s increasing cost and complexity. We introduce the Enhanced Transformer for Health Outcome Simulation (ETHOS), a novel application of the transformer deep-learning architecture for analyzing high-dimensional, heterogeneous, and episodic health data. ETHOS is trained using Patient Health Timelines (PHTs)—detailed, tokenized records of health events—to predict future health trajectories, leveraging a zero-shot learning approach. ETHOS represents a significant advancement in foundation model development for healthcare analytics, eliminating the need for labeled data and model fine-tuning. Its ability to simulate various treatment pathways and consider patient-specific factors positions ETHOS as a tool for care optimization and addressing biases in healthcare delivery. Future developments will expand ETHOS’ capabilities to incorporate a wider range of data types and data sources. Our work demonstrates a pathway toward accelerated AI development and deployment in healthcare.},
 	language = {en},
 	number = {1},
 	urldate = {2024-09-24},

@@ -7,6 +7,7 @@ from pathlib import Path
 import polars as pl
 import torch as th
 from safetensors.torch import save_file
+from torch.utils.data import Subset
 
 from ..constants import STATIC_DATA_FN
 from ..constants import SpecialToken as ST
@@ -37,10 +38,6 @@ class TimelineDataset(th.utils.data.Dataset):
         if is_encoder_decoder:
             self.timeline_size = n_positions
 
-        self.cxr_tokens = th.tensor(
-            self.vocab.encode([stoken for stoken in self.vocab if stoken.startswith("CXR//")])
-        )
-
     @property
     def tokens(self):
         return self._data.tokens
@@ -58,7 +55,7 @@ class TimelineDataset(th.utils.data.Dataset):
         return self._data.patient_id_at_idx
 
     @property
-    def patient_offsets(self) -> list[th.Tensor]:
+    def patient_offsets(self) -> th.Tensor:
         return th.cat([shard["patient_offsets"] + shard["offset"] for shard in self._data.shards])
 
     @property
@@ -86,12 +83,6 @@ class TimelineDataset(th.utils.data.Dataset):
             raise AttributeError("It's not MIMIC, no 'icustay_id' available.")
         return self._data.icu_stay_id
 
-    @property
-    def dicom_id(self):
-        if not self.is_mimic:
-            raise AttributeError("It's not MIMIC with CXR extension, no 'dicom_id' available.")
-        return self._data.dicom_id
-
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(len={len(self):,}, "
@@ -109,31 +100,7 @@ class TimelineDataset(th.utils.data.Dataset):
         if self.is_encoder_decoder:
             return (pt_ctx, timeline[:-1]), timeline[1:]
 
-        cxr_ids = None
-        if self.cxr_tokens.numel() and th.any(cxr_token_mask := th.isin(timeline, self.cxr_tokens)):
-            cxr_token_indices = th.nonzero(cxr_token_mask).view(-1)
-            cxr_ids = th.tensor(
-                [
-                    self.dicom_id[idx + cxr_idx]
-                    for i, cxr_idx in enumerate(cxr_token_indices, 1)
-                    if cxr_idx < len(timeline) - i
-                ]
-            ).to(int)
-
-            new_timeline, ptr, inserted_cxr_indices = [], 0, []
-            for i, (cxr_idx, cxr_id) in enumerate(zip(cxr_token_indices, cxr_ids)):
-                new_timeline.append(timeline[ptr : cxr_idx + 2].clone())
-                new_timeline[-1][-1] = cxr_id
-                ptr = cxr_idx + 1
-                inserted_cxr_indices.append(ptr.item() + i)
-            new_timeline.append(timeline[ptr : len(timeline) - len(cxr_ids)])
-            timeline = th.cat(new_timeline)
-
         x = th.cat((pt_ctx, timeline[:-1]))
-
-        if cxr_ids is not None and cxr_ids.numel():
-            timeline[inserted_cxr_indices] = -100
-
         y = th.cat((pt_ctx, timeline[1:]))
         y[: self.context_size] = -100
         return x, y
@@ -143,31 +110,23 @@ class TimelineDataset(th.utils.data.Dataset):
         time_at_start = self.times[idx].item()
 
         static_tokens = []
-        if patient_id not in self.static_data:
-            # TODO: Don't hardcode this.
-            static_tokens.extend(
-                [
-                    "BMI//UNKNOWN",
-                    "GENDER//M",
-                    "MARITAL//UNKNOWN",
-                    f"Q{int(self._num_quantiles / 2)}",
-                    "Q1",
-                    "RACE//UNKNOWN",
-                ]
-            )
-        else:
-            for token in self.static_data[patient_id].values():
-                if token["code"][0] == ST.DOB:
-                    age = timedelta(microseconds=time_at_start - token["time"][0])
-                    static_tokens.extend(self._age_to_tokens(age.days / 365.25))
-                elif len(token["code"]) == 1:
-                    static_tokens.append(token["code"][0])
-                else:
-                    idx = self._find_closest_index(token["time"], time_at_start)
-                    static_tokens.append(token["code"][idx])
+        for token in self.static_data[patient_id].values():
+            if token["code"][0] == ST.DOB:
+                age = timedelta(microseconds=time_at_start - token["time"][0])
+                static_tokens.extend(self._age_to_tokens(age.days / 365.25))
+            elif len(token["code"]) == 1:
+                static_tokens.append(token["code"][0])
+            else:
+                time_idx = self._find_idx_of_last_smaller_or_equal(token["time"], time_at_start)
+                code = (
+                    token["code"][0].split("//")[0] + "//UNKNOWN"
+                    if time_idx == -1
+                    else token["code"][time_idx]
+                )
+                static_tokens.append(code)
         return th.tensor(self.vocab.encode(static_tokens))
 
-    def _age_to_tokens(self, age_years: float) -> tuple[str]:
+    def _age_to_tokens(self, age_years: float) -> tuple[str, str]:
         age_scaled = age_years * self._num_quantiles**2 / 100
         age_scaled = min(age_scaled, self._num_quantiles**2 - 1)
 
@@ -180,8 +139,12 @@ class TimelineDataset(th.utils.data.Dataset):
         return f"Q{age_t1 + 1}", f"Q{age_t2 + 1}"
 
     @staticmethod
-    def _find_closest_index(ll: list, target_value: float) -> int:
-        return min(range(len(ll)), key=lambda i: abs(ll[i] - target_value))
+    def _find_idx_of_last_smaller_or_equal(ll: Sequence, value: float) -> int:
+        """Assumes ll is sorted in ascending order."""
+        indices = [i for i, v in enumerate(ll) if v <= value]
+        if indices:
+            return indices[-1]
+        return -1
 
     @staticmethod
     def tensorize(in_fp: str | Path | list, out_fp: str | Path, vocab: Vocabulary):
@@ -211,11 +174,31 @@ class TimelineDataset(th.utils.data.Dataset):
         }
 
         # TODO: This is extremely memory-inefficient.
-        for mimic_col in ["hadm_id", "icustay_id", "dicom_id"]:
+        for mimic_col in ["hadm_id", "icustay_id"]:
             if mimic_col in df.columns:
                 tensors[mimic_col] = df[mimic_col].to_torch()
 
         save_file(tensors, Path(out_fp).with_suffix(".safetensors"))
+
+    def train_test_split(
+        self, test_size: float | int
+    ) -> tuple[Subset["TimelineDataset"], Subset["TimelineDataset"]]:
+        """Splits the dataset into training and testing subsets."""
+        if 0 < test_size < 1:
+            real_test_size = int(test_size * len(self))
+        elif test_size >= 1:
+            real_test_size = int(test_size * 1e6)
+        else:
+            raise ValueError(
+                f"test_size must be a float in (0, 1) or an integer >= 1, got {test_size}"
+            )
+
+        train_size = len(self) - real_test_size - self.timeline_size + 1
+        train_dataset = Subset(self, indices=th.arange(train_size))
+
+        test_dataset = Subset(self, indices=th.arange(len(self) - real_test_size, len(self)))
+
+        return train_dataset, test_dataset
 
 
 class InferenceDataset(TimelineDataset, abc.ABC):
@@ -228,9 +211,6 @@ class InferenceDataset(TimelineDataset, abc.ABC):
 
     def _get_icu_stay_id(self, idx: int) -> int | None:
         return None if th.isnan(icu_stay_id := self.icu_stay_id[idx]) else int(icu_stay_id)
-
-    def _get_dicom_id(self, idx: int) -> str | None:
-        return None if th.isnan(dicom_id := self.dicom_id[idx]) else dicom_id
 
     @abc.abstractmethod
     def __len__(self) -> int:
@@ -280,3 +260,17 @@ class InferenceDataset(TimelineDataset, abc.ABC):
             mask = ordered_sequence_indices < len(ordered_sequence)
             out[mask] = ordered_sequence[ordered_sequence_indices[mask]]
             return out
+
+    def _move_idx_to_last_same_time(self, token_index: th.Tensor) -> th.Tensor:
+        """Shifts index to the last token with the same time of the token at the index."""
+        data_end_idx = self.patient_data_end_at_idx[token_index]
+        times = self.times[token_index : data_end_idx - 1]
+        idx_offset = th.searchsorted(times[1:], times[0], right=True)
+        return token_index + idx_offset
+
+    def _move_indices_to_last_same_time(self, token_indices: th.Tensor) -> th.Tensor:
+        """Shifts indices to the last token with the same time of the token at the index."""
+        new_indices = th.empty_like(token_indices)
+        for i, idx in enumerate(token_indices):
+            new_indices[i] = self._move_idx_to_last_same_time(idx)
+        return new_indices

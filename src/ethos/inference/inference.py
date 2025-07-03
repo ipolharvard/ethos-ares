@@ -5,7 +5,7 @@ from queue import Queue
 import torch as th
 
 from ..constants import SpecialToken as ST
-from ..utils import load_model_checkpoint
+from ..utils import load_model_checkpoint, setup_torch
 from ..vocabulary import Vocabulary
 from .constants import Reason, Task
 from .utils import create_loader, get_dataset_cls, get_next_token, get_token_time
@@ -26,6 +26,7 @@ def spawn_inference_worker(
     if "cuda" in device:
         th.cuda.set_device(device)
         th.set_float32_matmul_precision("high")
+    autocast_context = setup_torch(device, dtype="bfloat16" if "cuda" in device else "float32")
 
     model, _ = load_model_checkpoint(model_fp, map_location=device)
     model.to(device)
@@ -66,9 +67,10 @@ def spawn_inference_worker(
                 )
                 next_token = next_token.repeat(timeline.size(0), 1)
             else:
-                next_token, probs = get_next_token(
-                    model, timeline, ctx=ctx, return_probs=True, temperature=temperature
-                )
+                with autocast_context:
+                    next_token, probs = get_next_token(
+                        model, timeline, ctx=ctx, return_probs=True, temperature=temperature
+                    )
 
             if generated_tokens is not None:
                 generated_tokens.append(next_token)
