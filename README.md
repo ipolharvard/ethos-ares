@@ -1,6 +1,6 @@
 > [!NOTE]
-> As of July 1st, 2025, we fixed a major mistake in the ED-related task labelling and used MIMIC
-> data. Please update your forks with the latest version.
+> As of July 2nd, 2025, we fixed a major mistake in the ED-related task labelling and used MIMIC
+> data. Please update your forks to the latest version.
 
 # ETHOS - EHR foundation model
 
@@ -40,7 +40,7 @@ available [here](https://github.com/ipolharvard/ethos-paper)) to achieve higher 
 We provide the complete code necessary to reproduce all experiments presented in the paper.
 
 Additionally, all precomputed inference results of our experiments are available in
-`results.tar.gz` [[Google Drive (1.8GB)]](https://drive.google.com/file/d/1P2y70iZO3ZbwkROVCzJa7FCubQvk1qsE/view?usp=sharing).
+`results.tar.gz` [[Google Drive (1.1GB)]](https://drive.google.com/file/d/1P2y70iZO3ZbwkROVCzJa7FCubQvk1qsE/view?usp=sharing).
 Once unpacked in the project's root directory, this file will allow generating
 all the figures in the paper using the notebooks: `notebooks/figures.ipynb` and
 `notebooks/trajectories.ipynb`. The test set on which these results were inferred can be easily
