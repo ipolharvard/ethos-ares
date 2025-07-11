@@ -341,13 +341,15 @@ class DiagnosesData:
 
 class ProcedureData:
     @staticmethod
-    @MatchAndRevise(prefix="PROCEDURE")
+    @MatchAndRevise(prefix="PROCEDURE", needs_resorting=True)
     def prepare_codes_for_processing(df: pl.DataFrame) -> pl.DataFrame:
         return (
             df.with_columns(pl.col.code.str.split("//"))
             .filter(pl.col.code.list[1] == "ICD")
             .with_columns(
-                code=pl.lit("ICD//PCS//") + pl.col.code.list[2], text_value=pl.col.code.list[3]
+                code=pl.lit("ICD//PCS//") + pl.col.code.list[2],
+                text_value=pl.col.code.list[3],
+                time=pl.col("time").dt.combine(time=pl.time(23, 59, 59)),
             )
         )
 
@@ -530,6 +532,7 @@ class BMIData:
     @staticmethod
     @MatchAndRevise(prefix=["BMI", "Q"])
     def join_token_and_quantile(df: pl.DataFrame) -> pl.DataFrame:
+        """TODO: This one should be done in transform_to_quantiles"""
         q_following_bmi_mask = (pl.col("code") == "BMI").shift(1)
         return df.with_columns(
             code=pl.when(q_following_bmi_mask)
@@ -551,8 +554,7 @@ class LabData:
     def make_quantiles(
         df: pl.DataFrame, counts: dict[str, int] | None = None, vocab: list[str] | None = None
     ) -> pl.DataFrame:
-        # TODO: we've run a simple analysis and decided to keep 200 most frequent labs
-        # as the cover most of all the labs in the dataset
+        # TODO: we run some simple analysis and decided to keep 200 most frequent labs
         known_lab_names = list(counts.keys())[:200] if vocab is None else vocab
         return (
             df.filter(unify_code_names(pl.col("code")).is_in(known_lab_names))
