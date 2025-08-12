@@ -40,7 +40,7 @@ available [here](https://github.com/ipolharvard/ethos-paper)) to achieve higher 
 We provide the complete code necessary to reproduce all experiments presented in the paper.
 
 Additionally, all precomputed inference results of our experiments are available in
-`results.tar.gz` [[Google Drive (1.1GB)]](https://drive.google.com/file/d/1P2y70iZO3ZbwkROVCzJa7FCubQvk1qsE/view?usp=sharing).
+`results.tar.gz` [[GigaDB (1.1GB)]](https://doi.org/10.5524/102752).
 Once unpacked in the project's root directory, this file will allow generating
 all the figures in the paper using the notebooks: `notebooks/figures.ipynb` and
 `notebooks/trajectories.ipynb`. The test set on which these results were inferred can be easily
