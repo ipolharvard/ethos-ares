@@ -1,6 +1,5 @@
 > [!NOTE]
-> As of July 2nd, 2025, we fixed a major mistake in the ED-related task labelling and used MIMIC
-> data. Please update your forks to the latest version.
+> All data files in the `src/ethos/tokenize/maps` directory are under the CC0 public domain waiver.
 
 # ETHOS - EHR foundation model
 
