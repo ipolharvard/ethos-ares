@@ -205,16 +205,18 @@ Foundation Model of Electronic Medical Records for Adaptive Risk Estimation. arX
 2502.06124.
 
 ```
-@misc{renc2025ehrfoundationmodel,
-      title={Foundation Model of Electronic Medical Records for Adaptive Risk Estimation},
-      author={Pawel Renc and Michal K. Grzeszczyk and Nassim Oufattole and Deirdre Goode and Yugang Jia and
-      Szymon Bieganski and Matthew B. A. McDermott and Jaroslaw Was and Anthony E. Samir and Jonathan W.
-      Cunningham and David W. Bates and Arkadiusz Sitek},
-      year={2025},
-      eprint={2502.06124},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2502.06124},
+@article{10.1093/gigascience/giaf107,
+    author = {Renc, Pawel and Grzeszczyk, Michal K and Oufattole, Nassim and Goode, Deirdre and Jia, Yugang and Bieganski, Szymon and McDermott, Matthew B A and Was, Jaroslaw and Samir, Anthony E and Cunningham, Jonathan W and Bates, David W and Sitek, Arkadiusz},
+    title = {Foundation model of electronic medical records for adaptive risk estimation},
+    journal = {GigaScience},
+    volume = {14},
+    pages = {giaf107},
+    year = {2025},
+    month = {09},
+    issn = {2047-217X},
+    doi = {10.1093/gigascience/giaf107},
+    url = {https://doi.org/10.1093/gigascience/giaf107},
+    eprint = {https://academic.oup.com/gigascience/article-pdf/doi/10.1093/gigascience/giaf107/64443371/giaf107.pdf},
 }
 ```
 
